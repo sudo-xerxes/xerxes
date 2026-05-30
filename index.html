@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>xerxes — CTF Player / Pentester</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #000;
+    color: #00ff41;
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  #matrix-bg {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  #boot-screen {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Share Tech Mono', monospace;
+    color: #00ff41;
+  }
+
+  #boot-text {
+    font-size: 13px;
+    width: 480px;
+    line-height: 1.7;
+  }
+
+  #boot-bar-wrap {
+    margin-top: 24px;
+    width: 480px;
+  }
+
+  #boot-label {
+    font-size: 12px;
+    color: #00cc33;
+    margin-bottom: 6px;
+  }
+
+  #boot-bar {
+    height: 6px;
+    background: #001a00;
+    border: 1px solid #00ff41;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #boot-fill {
+    height: 100%;
+    background: #00ff41;
+    width: 0%;
+    transition: width 0.05s linear;
+    box-shadow: 0 0 8px #00ff41;
+  }
+
+  #page {
+    position: relative;
+    z-index: 1;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px 20px 60px;
+  }
+
+  #header {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+
+  #header .skull {
+    font-family: 'VT323', monospace;
+    font-size: 48px;
+    color: #00ff41;
+    line-height: 1;
+    text-shadow: 0 0 10px #00ff41;
+    letter-spacing: 4px;
+  }
+
+  #header .tagline {
+    font-size: 11px;
+    color: #005c1a;
+    letter-spacing: 6px;
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+
+  #terminal {
+    width: 100%;
+    max-width: 700px;
+    background: #f5f5f0;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4);
+    overflow: hidden;
+  }
+
+  #term-titlebar {
+    background: #e8e8e3;
+    border-bottom: 1px solid #ccc;
+    padding: 9px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .tb-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+  }
+  .tb-dot.red   { background: #ff5f57; }
+  .tb-dot.amber { background: #febc2e; }
+  .tb-dot.green { background: #28c840; }
+
+  #term-title {
+    margin-left: 8px;
+    font-size: 11px;
+    color: #888;
+    letter-spacing: 1px;
+    flex: 1;
+    text-align: center;
+    margin-right: 60px;
+  }
+
+  #term-body {
+    padding: 18px 22px 18px;
+    min-height: 320px;
+    font-size: 13.5px;
+    line-height: 1.75;
+    color: #1a1a1a;
+    max-height: 70vh;
+    overflow-y: auto;
+    background: #f5f5f0;
+  }
+
+  #term-body::-webkit-scrollbar { width: 4px; }
+  #term-body::-webkit-scrollbar-track { background: #e8e8e3; }
+  #term-body::-webkit-scrollbar-thumb { background: #bbb; border-radius: 2px; }
+
+  .line { display: block; white-space: pre-wrap; word-break: break-all; }
+  .prompt-line { display: flex; gap: 6px; align-items: flex-start; }
+  .prompt-sym { color: #555; flex-shrink: 0; font-weight: bold; }
+  .prompt-cmd { color: #111; }
+
+  .out-dim  { color: #999; }
+  .out-key  { color: #111; font-weight: bold; }
+  .out-val  { color: #2563eb; }
+  .out-file { color: #7c3aed; }
+  .out-err  { color: #dc2626; }
+  .out-sec  { color: #555; font-size: 12px; letter-spacing: 1px; }
+  .out-warn { color: #d97706; }
+  .out-cat-head { color: #111; font-weight: bold; }
+
+  #input-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  #user-input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #111;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13.5px;
+    caret-color: transparent;
+    width: 2px;
+    min-width: 2px;
+  }
+
+  #cursor-blink {
+    display: inline-block;
+    width: 8px;
+    height: 15px;
+    background: #333;
+    animation: blink 1s step-end infinite;
+    vertical-align: middle;
+    flex-shrink: 0;
+    margin-left: 1px;
+  }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  .scanline {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 50;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+  }
+</style>
+</head>
+<body>
+
+<div class="scanline"></div>
+<canvas id="matrix-bg"></canvas>
+
+<div id="boot-screen">
+  <div id="boot-text"></div>
+  <div id="boot-bar-wrap">
+    <div id="boot-label">LOADING SYSTEM...</div>
+    <div id="boot-bar"><div id="boot-fill"></div></div>
+  </div>
+</div>
+
+<div id="page">
+  <div id="header">
+    <div class="skull">[ XERXES.SH ]</div>
+    <div class="tagline">:: root@pentester ~ // unauthorised access will be prosecuted ::</div>
+  </div>
+
+  <div id="terminal">
+    <div id="term-titlebar">
+      <div class="tb-dot red"></div>
+      <div class="tb-dot amber"></div>
+      <div class="tb-dot green"></div>
+      <span id="term-title">bash — xerxes@kali: ~</span>
+    </div>
+    <div id="term-body">
+      <div id="output"></div>
+      <div id="input-row">
+        <span class="prompt-sym">xerxes@kali:~$</span>
+        <input id="user-input" autofocus autocomplete="off" spellcheck="false" />
+        <span id="cursor-blink"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('matrix-bg');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+const drops = [];
+function initDrops() {
+  const cols = Math.floor(window.innerWidth / 18);
+  drops.length = 0;
+  for (let i = 0; i < cols; i++) drops.push(1);
+}
+initDrops();
+window.addEventListener('resize', initDrops);
+
+function drawMatrix() {
+  ctx.fillStyle = 'rgba(0,0,0,0.05)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  for (let i = 0; i < drops.length; i++) {
+    const char = Math.random() > 0.5 ? '1' : '0';
+    const alpha = 0.15 + Math.random() * 0.5;
+    ctx.fillStyle = `rgba(0,${Math.floor(180 + Math.random()*75)},${Math.floor(30 + Math.random()*30)},${alpha})`;
+    ctx.font = `${12 + Math.floor(Math.random()*4)}px 'Share Tech Mono', monospace`;
+    ctx.fillText(char, i * 18, drops[i] * 18);
+    if (drops[i] * 18 > canvas.height && Math.random() > 0.975) drops[i] = 0;
+    drops[i]++;
+  }
+}
+setInterval(drawMatrix, 50);
+
+const bootLines = [
+  'BIOS v4.2.0  |  Initializing kernel modules...',
+  'Loading net-tools... [OK]',
+  'Loading exploit-db... [OK]',
+  'Loading hashcat... [OK]',
+  'Mounting /dev/null... [OK]',
+  'Starting SSH daemon... [OK]',
+  'Decrypting filesystem... [OK]',
+  'Identity verified: xerxes',
+  '> Boot sequence complete.',
+];
+
+const bootEl = document.getElementById('boot-text');
+const bootFill = document.getElementById('boot-fill');
+
+function typeBootLine(idx, cb) {
+  if (idx >= bootLines.length) { cb(); return; }
+  const line = bootLines[idx];
+  let ci = 0;
+  const span = document.createElement('div');
+  bootEl.appendChild(span);
+  const iv = setInterval(() => {
+    span.textContent = line.substring(0, ci + 1);
+    ci++;
+    if (ci >= line.length) {
+      clearInterval(iv);
+      bootFill.style.width = ((idx + 1) / bootLines.length * 100) + '%';
+      setTimeout(() => typeBootLine(idx + 1, cb), 60);
+    }
+  }, 18);
+}
+
+typeBootLine(0, () => {
+  setTimeout(() => {
+    const bs = document.getElementById('boot-screen');
+    bs.style.transition = 'opacity 0.6s';
+    bs.style.opacity = '0';
+    setTimeout(() => {
+      bs.style.display = 'none';
+      document.getElementById('page').style.display = 'flex';
+      startAutoplay();
+    }, 650);
+  }, 400);
+});
+
+const out = document.getElementById('output');
+const termBody = document.getElementById('term-body');
+
+function clearOutput() {
+  out.innerHTML = '';
+}
+
+function addLine(html, cls) {
+  const d = document.createElement('div');
+  d.className = 'line ' + (cls || '');
+  d.innerHTML = html;
+  out.appendChild(d);
+  termBody.scrollTop = termBody.scrollHeight;
+}
+
+function addPromptLine(cmd) {
+  const d = document.createElement('div');
+  d.className = 'prompt-line';
+  d.innerHTML = `<span class="prompt-sym">xerxes@kali:~$</span>&nbsp;<span class="prompt-cmd">${cmd}</span>`;
+  out.appendChild(d);
+  termBody.scrollTop = termBody.scrollHeight;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function typeCmd(cmd) {
+  const d = document.createElement('div');
+  d.className = 'prompt-line';
+  const sym = document.createElement('span');
+  sym.className = 'prompt-sym';
+  sym.textContent = 'xerxes@kali:~$ ';
+  const txt = document.createElement('span');
+  txt.className = 'prompt-cmd';
+  d.appendChild(sym);
+  d.appendChild(txt);
+  out.appendChild(d);
+  for (let i = 0; i < cmd.length; i++) {
+    txt.textContent += cmd[i];
+    termBody.scrollTop = termBody.scrollHeight;
+    await sleep(55 + Math.random() * 30);
+  }
+  await sleep(300);
+}
+
+const whoamiOut = [
+  `<span class="out-dim">┌─────────────────────────────────────────┐</span>`,
+  `<span class="out-dim">│</span>  <span class="out-key">nickname</span>     <span class="out-val">xerxes</span>`,
+  `<span class="out-dim">│</span>  <span class="out-key">my skills</span>     <span class="out-val">CTF Player / Pentester</span>`,
+  `<span class="out-dim">│</span>  <span class="out-key">age</span>      <span class="out-val">17</span>`,
+  `<span class="out-dim">│</span>  <span class="out-key">status</span>   <span class="out-val">always learning, often breaking</span>`,
+  `<span class="out-dim">└─────────────────────────────────────────┘</span>`,
+];
+
+const lsOut = [
+  `<span class="out-file">skills.enumerate()</span><br><span class="out-file">ctf_stats.json</span><br><span class="out-file">tools.list()</span><br><span class="out-file">contact.sh</span>`,
+  ``,
+  `<span class="out-dim">hint: cat &lt;filename&gt;</span>`,
+];
+
+const files = {
+  'skills.enumerate()': [
+    `<span class="out-sec">// skills.enumerate()</span>`,
+    ``,
+    `<span class="out-cat-head">[ WEB ]</span>`,
+    `  <span class="out-val">SQL Injection</span>   <span class="out-val">XSS / CSRF</span>   <span class="out-val">SSRF</span>   <span class="out-val">LFI / RFI</span>   <span class="out-val">XXE</span>`,
+    `<span class="out-cat-head">[ BINARY ]</span>`,
+    `  <span class="out-val">Buffer Overflow</span>   <span class="out-val">ROP chains</span>   <span class="out-val">Shellcode</span>`,
+    `<span class="out-cat-head">[ CRYPTO ]</span>`,
+    `  <span class="out-val">RSA attacks</span>   <span class="out-val">CBC padding oracle</span>   <span class="out-val">Hash cracking</span>`,
+    `<span class="out-cat-head">[ FORENSICS ]</span>`,
+    `  <span class="out-val">Steganography</span>   <span class="out-val">Memory dumps</span>   <span class="out-val">Disk imaging</span>`,
+    `<span class="out-cat-head">[ SCRIPTING ]</span>`,
+    `  <span class="out-val">Python</span>   <span class="out-val">Bash</span>   <span class="out-val">C</span>`,
+    ``,
+    `<span class="out-dim">→ 5 categories loaded. Still expanding...</span>`,
+  ],
+  'ctf_stats.json': [
+    ``,
+    `  <span class="out-key">platform</span><span class="out-dim">: </span><span class="out-val">TryHackMe</span><span class="out-dim">,</span>`,
+    `  <span class="out-key">rank</span><span class="out-dim">:</span><span class="out-val">Hacker</span><span class="out-dim">,</span>`,
+    `  <span class="out-key">boxes_pwned</span><span class="out-dim">:</span><span class="out-val">34</span><span class="out-dim">,</span>`,
+    `  <span class="out-key">competitions</span><span class="out-dim">: [</span>`,
+    `  <span class="out-val">GOCTF 2026</span><span class="out-dim"></span>`,
+    `  <span class="out-dim">],</span>`,
+    `  <span class="out-key">favourite_category</span><span class="out-dim">:</span> <span class="out-val">"web"</span><span class="out-dim">,</span>`,
+    `  <span class="out-key">currently_studying</span><span class="out-dim">:</span> <span class="out-val">"kernel exploitation"</span>`,
+    ``,
+  ],
+  'tools.list()': [
+    `<span class="out-sec">// tools.list() — installed arsenal</span>`,
+    ``,
+    `<span class="out-key">RECON</span>      <span class="out-val">nmap</span>  <span class="out-val">rustscan</span>  <span class="out-val">amass</span>  <span class="out-val">subfinder</span>`,
+    `<span class="out-key">WEB</span>        <span class="out-val">burpsuite</span>  <span class="out-val">ffuf</span>  <span class="out-val">sqlmap</span>  <span class="out-val">nikto</span>`,
+    `<span class="out-key">EXPLOIT</span>    <span class="out-val">metasploit</span>  <span class="out-val">pwndbg</span>  <span class="out-val">pwntools</span>`,
+    `<span class="out-key">CRYPTO</span>     <span class="out-val">hashcat</span>  <span class="out-val">john</span>  <span class="out-val">cyberchef</span>`,
+    `<span class="out-key">FORENSICS</span>  <span class="out-val">wireshark</span>`,
+    `<span class="out-key">OS</span>         <span class="out-val">Kali Linux</span> `,
+    ``,
+    `<span class="out-dim">→ 23 tools active. 0 antivirus detected.</span>`,
+  ],
+  'contact.sh': [
+    `<span class="out-sec">#!/bin/bash — contact.sh</span>`,
+    ``,
+    `<span class="out-key">GitHub</span>   <span class="out-dim">→</span>  <span class="out-val">github.com/sudo-xerxes</span>`,
+    `<span class="out-key">Telegram</span>  <span class="out-dim">→</span>  <span class="out-val">https://t.me/xerxesw</span>`,
+    ``,
+    `<span class="out-warn">⚠  All comms are encrypted. PGP key on GitHub.</span>`,
+    `<span class="out-dim">   I don't bite. Unless it's a CTF.</span>`,
+  ],
+};
+
+const validFiles = Object.keys(files);
+
+async function startAutoplay() {
+  await sleep(400);
+  await typeCmd('whoami');
+  await sleep(150);
+  whoamiOut.forEach(h => addLine(h, ''));
+  addLine('', '');
+
+  userInput.focus();
+}
+
+const userInput = document.getElementById('user-input');
+
+userInput.addEventListener('input', () => {
+  userInput.style.width = Math.max(2, userInput.value.length) + 'ch';
+});
+
+userInput.addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter') return;
+  const val = e.target.value.trim();
+  e.target.value = '';
+  userInput.style.width = '2px';
+  if (!val) return;
+
+  clearOutput();
+  addPromptLine(val);
+  addLine('', '');
+
+  const parts = val.split(/\s+/);
+  const cmd = parts[0];
+  const arg = parts.slice(1).join(' ');
+
+  if (cmd === 'cat') {
+    const match = validFiles.find(f => f === arg);
+    if (match) {
+      files[match].forEach(h => addLine(h, ''));
+    } else if (arg) {
+      addLine(`<span class="out-err">cat: ${arg}: No such file or directory</span>`, '');
+    } else {
+      addLine(`<span class="out-err">usage: cat &lt;filename&gt;</span>`, '');
+    }
+  } else if (cmd === 'whoami') {
+    whoamiOut.forEach(h => addLine(h, ''));
+  } else if (cmd === 'ls') {
+    lsOut.forEach(h => addLine(h, ''));
+  } else if (cmd === 'clear') {
+    out.innerHTML = '';
+  } else if (val === 'fsociety') {
+    const artLines = [
+      "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "XX                                                                          XX",
+      "XX   MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM   XX",
+      "XX   MMMMMMMMMMMMMMMMMMMssssssssssssssssssssssssssMMMMMMMMMMMMMMMMMMMMM   XX",
+      "XX   MMMMMMMMMMMMMMMMss'''                          '''ssMMMMMMMMMMMMMMMM   XX",
+      "XX   MMMMMMMMMMMMyy''                                    ''yyMMMMMMMMMMMM   XX",
+      "XX   MMMMMMMMyy''                                            ''yyMMMMMMMM   XX",
+      "XX   MMMMMy''                                                    ''yMMMMM   XX",
+      "XX   MMMy'                                                          'yMMM   XX",
+      "XX   Mh'                                                              'hM   XX",
+      "XX   -                                                                  -   XX",
+      "XX                                                                          XX",
+      "XX   ::                                                                ::   XX",
+      "XX   MMhh.        ..hhhhhh..                      ..hhhhhh..        .hhMM   XX",
+      "XX   MMMMMh   ..hhMMMMMMMMMMhh.                .hhMMMMMMMMMMhh..   hMMMMM   XX",
+      "XX   ---MMM .hMMMMdd:::dMMMMMMMhh..        ..hhMMMMMMMd:::ddMMMMh. MMM---   XX",
+      "XX   MMMMMM MMmm''      'mmMMMMMMMMyy.  .yyMMMMMMMMmm'      ''mmMM MMMMMM  XX",
+      "XX   ---mMM ''             'mmMMMMMMMM  MMMMMMMMmm'             '' MMm---   XX",
+      "XX   yyyym'    .              'mMMMMm'  'mMMMMm'              .    'myyyy   XX",
+      "XX   mm''    .y'     ..yyyyy..  ''''      ''''  ..yyyyy..     'y.    ''mm   XX",
+      "XX           MN    .sMMMMMMMMMss.   .    .   .ssMMMMMMMMMs.    NM           XX",
+      "XX           N`    MMMMMMMMMMMMMN   M    M   NMMMMMMMMMMMMM    `N           XX",
+      "XX            +  .sMNNNNNMMMMMN+   `N    N`   +NMMMMMNNNNNMs.  +           XX",
+      "XX              o+++     ++++Mo    M      M    oM++++     +++o              XX",
+      "XX                                oo      oo                                XX",
+      "XX           oM                 oo          oo                 Mo           XX",
+      "XX         oMMo                M              M                oMMo         XX",
+      "XX       +MMMM                 s              s                 MMMM+       XX",
+      "XX      +MMMMM+            +++NNNN+        +NNNN+++            +MMMMM+      XX",
+      "XX     +MMMMMMM+       ++NNMMMMMMMMN+    +NMMMMMMMMNN++       +MMMMMMM+     XX",
+      "XX     MMMMMMMMMNN+++NNMMMMMMMMMMMMMMNNNNMMMMMMMMMMMMMMNN+++NNMMMMMMMMM     XX",
+      "XX     yMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMy     XX",
+      "XX   m  yMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMy  m   XX",
+      "XX   MMm yMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMy mMM   XX",
+      "XX   MMMm .yyMMMMMMMMMMMMMMMM     MMMMMMMMMM     MMMMMMMMMMMMMMMMyy. mMMM   XX",
+      "XX   MMMMd   ''''hhhhh       odddo          obbbo        hhhh''''   dMMMM   XX",
+      "XX   MMMMMd             'hMMMMMMMMMMddddddMMMMMMMMMMh'             dMMMMM   XX",
+      "XX   MMMMMMd              'hMMMMMMMMMMMMMMMMMMMMMMh'              dMMMMMM   XX",
+      "XX   MMMMMMM-               ''ddMMMMMMMMMMMMMMdd''               -MMMMMMM   XX",
+      "XX   MMMMMMMM                   '::dddddddd::'                   MMMMMMMM   XX",
+      "XX   MMMMMMMM-                                                  -MMMMMMMM   XX",
+      "XX   MMMMMMMMM                                                  MMMMMMMMM   XX",
+      "XX   MMMMMMMMMy                                                yMMMMMMMMM   XX",
+      "XX   MMMMMMMMMMy.                                            .yMMMMMMMMMM   XX",
+      "XX   MMMMMMMMMMMMy.                                        .yMMMMMMMMMMMM   XX",
+      "XX   MMMMMMMMMMMMMMy.                                    .yMMMMMMMMMMMMMM   XX",
+      "XX   MMMMMMMMMMMMMMMMs.                                .sMMMMMMMMMMMMMMMM   XX",
+      "XX   MMMMMMMMMMMMMMMMMMss.           ....           .ssMMMMMMMMMMMMMMMMMM   XX",
+      "XX   MMMMMMMMMMMMMMMMMMMMNo         oNNNNo         oNMMMMMMMMMMMMMMMMMMMM   XX",
+      "XX                                                                          XX",
+      "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "",
+      "    .o88o.                               o8o                .",
+      "    888 `\"                               `\"'              .o8",
+      "   o888oo   .oooo.o  .ooooo.   .ooooo.  oooo   .ooooo.  .o888oo oooo    ooo",
+      "    888    d88(  \"8 d88' `88b d88' `\"Y8 `888  d88' `88b   888    `88.  .8'",
+      "    888    `\"Y88b.  888   888 888        888  888ooo888   888     `88..8'",
+      "    888    o.  )88b 888   888 888   .o8  888  888    .o   888 .    `888'",
+      "   o888o   8\"\"888P' `Y8bod8P' `Y8bod8P' o888o `Y8bod8P'   \"888\"      d8'",
+      "                                                                .o...P'",
+      "                                                                `XER0'",
+    ];
+    artLines.forEach(line => {
+      const d = document.createElement('div');
+      d.className = 'line';
+      d.style.cssText = 'color:#111;font-size:9.5px;line-height:1.25;white-space:pre;font-family:"Share Tech Mono",monospace;';
+      d.textContent = line;
+      out.appendChild(d);
+      termBody.scrollTop = termBody.scrollHeight;
+    });
+  } else if (cmd === 'help') {
+    addLine(`<span class="out-dim">available: whoami  ls  cat &lt;file&gt;  clear</span>`, '');
+  } else {
+    addLine(`<span class="out-err">bash: ${cmd}: command not found</span>`, '');
+    addLine(`<span class="out-dim">try: whoami | ls | cat &lt;file&gt; | clear | help</span>`, '');
+  }
+
+  addLine('', '');
+  termBody.scrollTop = termBody.scrollHeight;
+});
+
+document.getElementById('term-body').addEventListener('click', () => {
+  userInput.focus();
+});
+</script>
+</body>
+</html>
